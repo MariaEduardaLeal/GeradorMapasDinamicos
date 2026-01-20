@@ -6,7 +6,8 @@ let leavesMesh = null;
 
 // Geometrias reutilizáveis (Low Poly)
 const trunkGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.6, 5); // Tronco hexagonal/pentagonal
-const leavesGeo = new THREE.ConeGeometry(0.6, 1.2, 5); // Copa cônica
+// const leavesGeo = new THREE.ConeGeometry(0.6, 1.2, 5); // Copa cônica
+const leavesGeo = new THREE.IcosahedronGeometry(0.6, 0);
 
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, flatShading: true });
 const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228B22, flatShading: true });
