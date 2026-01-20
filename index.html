@@ -2,42 +2,47 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Gerador de Continentes RPG</title>
+    <title>RPG World: Biomas Mistos</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
         #info {
             position: absolute; top: 20px; left: 20px;
-            color: white; background: rgba(0, 0, 0, 0.8);
+            color: white; background: rgba(0, 0, 0, 0.85);
             padding: 15px; border-radius: 8px;
             pointer-events: none; display: none;
             border: 2px solid #d4af37;
             min-width: 200px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
         }
         #instructions {
             position: absolute; bottom: 20px; left: 20px;
             color: white; background: rgba(0, 0, 0, 0.6); padding: 10px;
             pointer-events: none; border-radius: 4px;
         }
-        #seed-display {
+        #biome-display {
             position: absolute; top: 20px; right: 20px;
-            color: #d4af37; font-weight: bold; background: rgba(0,0,0,0.5);
-            padding: 5px 10px; border-radius: 5px;
+            color: #d4af37; font-weight: bold; background: rgba(0,0,0,0.6);
+            padding: 8px 12px; border-radius: 5px;
+            text-align: right;
         }
     </style>
 </head>
 <body>
 
     <div id="info">
-        <h2 id="cityName" style="margin-top: 0; color: #d4af37;">Nome</h2>
+        <h2 id="cityName" style="margin-top: 0; color: #d4af37; text-transform: uppercase;">Nome</h2>
         <p>População: <span id="cityPop" style="color: #eee;">0</span></p>
-        <p>Tipo: <span id="cityType" style="color: #eee;">Vila</span></p>
-        <p style="font-size: 0.8em; margin-top: 10px; color: #aaa;"><i>Clique fora para fechar</i></p>
+        <p>Bioma: <span id="cityBiome" style="color: #eee;">-</span></p>
+        <p>Tipo: <span id="cityType" style="color: #aaf;">Vila</span></p>
     </div>
 
-    <div id="seed-display">Gerando nova história...</div>
+    <div id="biome-display">
+        Mundo Gerado<br>
+        <span style="font-size:0.8em; color:#ccc;">Biomas: Gelo, Deserto e Floresta</span>
+    </div>
 
     <div id="instructions">
-        Botão Esquerdo: Girar | Scroll: Zoom | F5: Novo Mundo
+        Botão Esquerdo: Girar | Scroll: Zoom | F5: Gerar Novo Mapa
     </div>
 
     <script type="importmap">
@@ -54,13 +59,14 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { createNoise2D } from 'https://unpkg.com/simplex-noise@4.0.1/dist/esm/simplex-noise.js';
 
-        // --- Configuração da Cena ---
+        // --- Cena ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x203040); // Azul mais escuro/profundo
-        scene.fog = new THREE.Fog(0x203040, 100, 400); // "Fumaça" do mundo
+        scene.background = new THREE.Color(0x203040); 
+        // FIX: Neblina mais longe para ver o continente todo
+        scene.fog = new THREE.Fog(0x203040, 100, 400);
 
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 50, 60);
+        camera.position.set(0, 60, 80);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -69,77 +75,109 @@
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.maxPolarAngle = Math.PI / 2 - 0.1; // Impede a câmera de entrar no chão
+        controls.maxPolarAngle = Math.PI / 2 - 0.1;
 
         // --- Luzes ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffddaa, 1.2); // Luz solar levemente alaranjada
-        dirLight.position.set(50, 80, 50);
+        const dirLight = new THREE.DirectionalLight(0xffeeb1, 1.2);
+        dirLight.position.set(50, 100, 50);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 2048;
         dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 500;
+        dirLight.shadow.camera.left = -100;
+        dirLight.shadow.camera.right = 100;
+        dirLight.shadow.camera.top = 100;
+        dirLight.shadow.camera.bottom = -100;
         scene.add(dirLight);
 
-        // --- Geração de Terreno Procedural ---
+        // --- Geração Procedural ---
         const noise2D = createNoise2D();
         
-        // !IMPORTANTE: Isso garante mapas únicos a cada reload
-        const seedX = Math.random() * 10000; 
-        const seedZ = Math.random() * 10000;
-        document.getElementById('seed-display').innerText = `Mundo ID: ${Math.floor(seedX)}-${Math.floor(seedZ)}`;
+        // Sementes aleatórias
+        const seedElevationX = Math.random() * 5000; 
+        const seedElevationZ = Math.random() * 5000;
+        // Semente de TEMPERATURA (Deslocada para não coincidir com a altura)
+        const seedTempX = Math.random() * 5000 + 10000; 
+        const seedTempZ = Math.random() * 5000 + 10000;
 
-        const worldSize = 120;
-        const resolution = 150; // Mais vértices para curvas mais suaves
+        const worldSize = 140;
+        const resolution = 180;
         const geometry = new THREE.PlaneGeometry(worldSize, worldSize, resolution, resolution);
         geometry.rotateX(-Math.PI / 2);
 
         const vertices = geometry.attributes.position;
         const colors = [];
 
-        // Cores (Hex)
-        const C_DEEP = new THREE.Color(0x001133);
+        // Definição de Cores por Bioma
+        // -- TEMPERADO (Original) --
         const C_WATER = new THREE.Color(0x1E90FF);
         const C_SAND = new THREE.Color(0xE6C288);
-        const C_GRASS = new THREE.Color(0x2E8B57); // SeaGreen
-        const C_FOREST = new THREE.Color(0x006400); // DarkGreen
+        const C_GRASS = new THREE.Color(0x3CB371);
+        const C_FOREST = new THREE.Color(0x228B22);
         const C_ROCK = new THREE.Color(0x696969);
-        const C_SNOW = new THREE.Color(0xFFFAFA);
+        const C_SNOW = new THREE.Color(0xFFFFFF);
+
+        // -- DESERTO --
+        const C_DESERT_SAND = new THREE.Color(0xEDC9Af);
+        const C_DESERT_ROCK = new THREE.Color(0x8B4513); // Marrom avermelhado
+        
+        // -- GELO/TUNDRA --
+        const C_ICE_WATER = new THREE.Color(0x4682B4); // Água gelada
+        const C_ICE_GROUND = new THREE.Color(0xE0FFFF); // Ciano claro
+        const C_ICE_ROCK = new THREE.Color(0x708090); // SlateGray
 
         for (let i = 0; i < vertices.count; i++) {
             const x = vertices.getX(i);
             const z = vertices.getZ(i);
 
-            // --- A MÁGICA DOS CONTINENTES ---
-            // Camada 1: O "Formato do Continente" (Frequência muito baixa: 0.015)
-            // Usamos o seedX/Z para pegar um lugar aleatório do universo matemático
-            let noiseBase = noise2D((x + seedX) * 0.015, (z + seedZ) * 0.015);
+            // 1. CÁLCULO DA ALTURA (Relevo)
+            let nBase = noise2D((x + seedElevationX) * 0.015, (z + seedElevationZ) * 0.015);
+            let nDet = noise2D((x + seedElevationX) * 0.05, (z + seedElevationZ) * 0.05) * 0.3;
+            let nRock = noise2D((x + seedElevationX) * 0.15, (z + seedElevationZ) * 0.15) * 0.1;
+            let elevation = (nBase + nDet + nRock) * 9; 
             
-            // Camada 2: Detalhes e relevo (Frequência média: 0.05)
-            let noiseDetail = noise2D((x + seedX) * 0.06, (z + seedZ) * 0.06) * 0.3;
+            // 2. CÁLCULO DA TEMPERATURA (Bioma)
+            // Frequência baixa (0.02) cria grandes zonas de clima
+            let temperature = noise2D((x + seedTempX) * 0.02, (z + seedTempZ) * 0.02);
 
-            // Camada 3: Textura rochosa (Frequência alta: 0.15)
-            let noiseRoughness = noise2D((x + seedX) * 0.15, (z + seedZ) * 0.15) * 0.1;
+            vertices.setY(i, elevation);
 
-            // Soma tudo
-            let elevation = noiseBase + noiseDetail + noiseRoughness;
-
-            // Potencialização: Torna vales mais fundos e picos mais altos
-            // Isso ajuda a definir bem a separação Terra vs Mar
-            let finalHeight = elevation * 8; 
-
-            // Aplicar altura ao vértice
-            vertices.setY(i, finalHeight);
-
-            // Colorização baseada na altura final
+            // 3. LÓGICA DE COLORIZAÇÃO (BIOMAS MISTOS)
             let c;
-            if (finalHeight < -3) c = C_DEEP;
-            else if (finalHeight < 0.5) c = C_WATER;      // Nível do mar um pouco mais alto
-            else if (finalHeight < 1.8) c = C_SAND;       // Praias
-            else if (finalHeight < 4.5) c = C_GRASS;      // Planícies
-            else if (finalHeight < 7.0) c = C_FOREST;     // Florestas altas
-            else if (finalHeight < 10.0) c = C_ROCK;      // Montanhas
-            else c = C_SNOW;                              // Picos
+            
+            // Água é universal (abaixo do nível 0.2)
+            if (elevation < 0.2) {
+                // Se for muito frio, água mais escura/gelada
+                if (temperature < -0.4) c = C_ICE_WATER;
+                else c = C_WATER;
+            } 
+            else {
+                // TERRA FIRME - Decidir bioma pela temperatura
+                
+                // --- BIOMA GELO (Temperatura muito baixa) ---
+                if (temperature < -0.3) {
+                    if (elevation < 1.5) c = C_ICE_GROUND; // "Neve plana"
+                    else if (elevation < 6.0) c = C_ICE_ROCK; // Montanha gelada
+                    else c = C_SNOW; // Pico
+                }
+                // --- BIOMA DESERTO (Temperatura alta) ---
+                else if (temperature > 0.3) {
+                    if (elevation < 3.0) c = C_DESERT_SAND; // Dunas
+                    else if (elevation < 7.0) c = C_DESERT_ROCK; // Mesa/Canyon
+                    else c = C_DESERT_ROCK.clone().multiplyScalar(1.2); // Pico seco
+                }
+                // --- BIOMA TEMPERADO (Temperatura média) ---
+                else {
+                    if (elevation < 1.0) c = C_SAND;      // Praia
+                    else if (elevation < 4.0) c = C_GRASS;     // Campo
+                    else if (elevation < 7.5) c = C_FOREST;    // Floresta
+                    else if (elevation < 10.0) c = C_ROCK;     // Montanha
+                    else c = C_SNOW;                           // Pico
+                }
+            }
 
             colors.push(c.r, c.g, c.b);
         }
@@ -149,74 +187,85 @@
 
         const material = new THREE.MeshStandardMaterial({ 
             vertexColors: true, 
-            roughness: 0.9,
-            flatShading: true // Low Poly look
+            roughness: 0.8,
+            flatShading: true 
         });
 
         const terrain = new THREE.Mesh(geometry, material);
         terrain.receiveShadow = true;
         scene.add(terrain);
 
-        // --- Água ---
+        // Água Global (Plano transparente)
         const waterGeo = new THREE.PlaneGeometry(worldSize, worldSize);
         waterGeo.rotateX(-Math.PI / 2);
         const waterMat = new THREE.MeshStandardMaterial({
-            color: 0x1E90FF, transparent: true, opacity: 0.7,
-            roughness: 0.1, metalness: 0.5
+            color: 0x1E90FF, transparent: true, opacity: 0.5,
+            roughness: 0.2, metalness: 0.1
         });
         const water = new THREE.Mesh(waterGeo, waterMat);
-        water.position.y = 0.5; // Altura da água
+        water.position.y = 0.2;
         scene.add(water);
 
-        // --- Cidades Inteligentes ---
+        // --- Cidades Inteligentes (Com Bioma) ---
         const cities = [];
-        const cityMarkers = new THREE.Group();
-        scene.add(cityMarkers);
+        
+        function getBiomeType(temp) {
+            if(temp < -0.3) return "Gelo";
+            if(temp > 0.3) return "Deserto";
+            return "Temperado";
+        }
 
         function criarCidade() {
-            // Tenta 50 vezes achar um lugar bom, se não conseguir, desiste (evita loop infinito)
             for(let attempt = 0; attempt < 50; attempt++) {
-                const x = (Math.random() - 0.5) * (worldSize - 10);
-                const z = (Math.random() - 0.5) * (worldSize - 10);
+                const x = (Math.random() - 0.5) * (worldSize - 20);
+                const z = (Math.random() - 0.5) * (worldSize - 20);
 
-                // Recalcula a altura neste ponto exato usando a MESMA fórmula do terreno
-                let n1 = noise2D((x + seedX) * 0.015, (z + seedZ) * 0.015);
-                let n2 = noise2D((x + seedX) * 0.06, (z + seedZ) * 0.06) * 0.3;
-                let n3 = noise2D((x + seedX) * 0.15, (z + seedZ) * 0.15) * 0.1;
-                let h = (n1 + n2 + n3) * 8;
+                // Recalcula altura e temperatura no ponto
+                let h = (noise2D((x+seedElevationX)*0.015, (z+seedElevationZ)*0.015) +
+                         noise2D((x+seedElevationX)*0.05, (z+seedElevationZ)*0.05)*0.3 +
+                         noise2D((x+seedElevationX)*0.15, (z+seedElevationZ)*0.15)*0.1) * 9;
+                
+                let t = noise2D((x+seedTempX)*0.02, (z+seedTempZ)*0.02);
 
-                // Regra: Só constrói na grama ou floresta (entre areia e pedra)
-                if (h > 2.0 && h < 6.0) {
-                    const geo = new THREE.BoxGeometry(0.8, h/2 + 2, 0.8); // Altura varia
-                    const mat = new THREE.MeshStandardMaterial({ color: 0x8B0000 }); // Vermelho escuro
+                // Só constrói em terra firme habitável
+                if (h > 1.5 && h < 6.0) {
+                    const biome = getBiomeType(t);
+                    let color = 0xFF0000; // Padrão
+                    
+                    // Cor da cidade baseada no bioma
+                    if(biome === "Gelo") color = 0x00FFFF; // Ciano
+                    if(biome === "Deserto") color = 0xFF8C00; // Laranja Escuro
+
+                    const geo = new THREE.BoxGeometry(1, 2 + Math.random()*2, 1);
+                    const mat = new THREE.MeshStandardMaterial({ color: color });
                     const city = new THREE.Mesh(geo, mat);
                     
                     city.position.set(x, h + 1, z);
                     city.castShadow = true;
 
-                    // Metadados RPG
+                    // Gerar nome baseado no bioma
+                    let prefixo = "";
+                    if(biome === "Gelo") prefixo = "Winter-";
+                    if(biome === "Deserto") prefixo = "Sand-";
+                    
+                    const nomesBase = ["Guard", "Hold", "Ville", "Port", "Keep"];
+                    const nomeFinal = prefixo + nomesBase[Math.floor(Math.random()*nomesBase.length)] + " " + Math.floor(Math.random()*100);
+
                     city.userData = {
-                        name: gerarNomeCidade(),
-                        pop: Math.floor(Math.random() * 8000) + 500,
-                        type: h > 5 ? "Forte da Montanha" : "Vila dos Campos"
+                        name: nomeFinal,
+                        pop: Math.floor(Math.random() * 5000) + 200,
+                        biome: biome,
+                        type: biome === "Deserto" ? "Oásis Comercial" : (biome === "Gelo" ? "Forte da Neve" : "Vila Real")
                     };
 
-                    cityMarkers.add(city);
+                    scene.add(city);
                     cities.push(city);
-                    return; // Sucesso, sai da função
+                    return;
                 }
             }
         }
 
-        // Gerador de Nomes RPG
-        function gerarNomeCidade() {
-            const syl1 = ["Kor", "Dal", "Vor", "Cae", "Syl", "Mor", "Gar"];
-            const syl2 = ["vash", "ia", "dor", "mon", "thas", "grad", "wen"];
-            return syl1[Math.floor(Math.random()*syl1.length)] + syl2[Math.floor(Math.random()*syl2.length)];
-        }
-
-        // Tentar criar 15 cidades
-        for(let k=0; k<15; k++) criarCidade();
+        for(let k=0; k<12; k++) criarCidade();
 
         // --- Interação ---
         const raycaster = new THREE.Raycaster();
@@ -233,12 +282,15 @@
                 const data = hits[0].object.userData;
                 document.getElementById('cityName').innerText = data.name;
                 document.getElementById('cityPop').innerText = data.pop;
+                document.getElementById('cityBiome').innerText = data.biome;
                 document.getElementById('cityType').innerText = data.type;
-                info.style.display = 'block';
                 
-                // Feedback visual
-                hits[0].object.scale.set(1.5, 1.5, 1.5);
-                setTimeout(() => hits[0].object.scale.set(1, 1, 1), 200);
+                // Cores do painel baseadas no bioma
+                if(data.biome === "Gelo") info.style.borderColor = "#00FFFF";
+                else if(data.biome === "Deserto") info.style.borderColor = "#FF8C00";
+                else info.style.borderColor = "#d4af37";
+
+                info.style.display = 'block';
             } else {
                 info.style.display = 'none';
             }
@@ -249,7 +301,7 @@
             controls.update();
             renderer.render(scene, camera);
         }
-        
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
