@@ -5,8 +5,8 @@ export const noise2D = createNoise2D();
 
 // Configurações do Mundo
 export const CONFIG = {
-    worldSize: 140,
-    resolution: 150,
+    worldSize: 200,
+    resolution: 190,
     dayDuration: 600,
     colors: {
         deep: new THREE.Color(0x00008B),
