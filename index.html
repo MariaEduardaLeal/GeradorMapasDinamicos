@@ -2,12 +2,32 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>RPG World - Sombras Realistas</title>
+    <title>RPG World - Save & Load (Corrigido)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         
-        #info {
+        #controls-ui {
             position: absolute; top: 20px; left: 20px;
+            display: flex; gap: 10px; flex-direction: column;
+            z-index: 10;
+        }
+
+        .rpg-btn {
+            background: rgba(0, 0, 0, 0.8);
+            color: #d4af37;
+            border: 2px solid #d4af37;
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-family: 'Courier New', Courier, monospace;
+            transition: 0.3s;
+            border-radius: 5px;
+        }
+        .rpg-btn:hover { background: #d4af37; color: #000; box-shadow: 0 0 15px #d4af37; }
+
+        #info {
+            position: absolute; bottom: 80px; left: 20px;
             color: white; background: rgba(0, 0, 0, 0.8);
             padding: 20px; border-radius: 12px;
             pointer-events: none; display: none;
@@ -16,14 +36,6 @@
             min-width: 200px; backdrop-filter: blur(4px);
         }
         
-        #instructions {
-            position: absolute; bottom: 20px; left: 20px;
-            color: rgba(255,255,255,0.9); background: rgba(0, 0, 0, 0.6); 
-            padding: 10px 20px; border-radius: 30px;
-            font-size: 0.9em; pointer-events: none;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-
         #time-display {
             position: absolute; top: 20px; right: 20px;
             color: #fff; font-weight: bold; background: rgba(0,0,0,0.5);
@@ -35,6 +47,14 @@
 </head>
 <body>
 
+    <div id="controls-ui">
+        <button class="rpg-btn" id="btnSave">💾 Salvar Mapa</button>
+        <button class="rpg-btn" id="btnLoad">📂 Carregar Mapa</button>
+        <button class="rpg-btn" id="btnNew" style="margin-top: 10px;">🎲 Gerar Novo</button>
+    </div>
+    
+    <input type="file" id="fileInput" style="display: none;" accept=".json">
+
     <div id="info">
         <h2 id="cityName" style="margin: 0 0 10px 0; color: #d4af37; font-size: 1.5em;">Nome</h2>
         <p>População: <span id="cityPop" style="font-weight:bold;">0</span></p>
@@ -42,10 +62,6 @@
     </div>
 
     <div id="time-display">Hora: 00:00</div>
-
-    <div id="instructions">
-        Botão Esquerdo: Girar | Scroll: Zoom | <b>F5: Gerar Novo Mundo</b>
-    </div>
 
     <script type="importmap">
         {
@@ -61,7 +77,7 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { createNoise2D } from 'https://unpkg.com/simplex-noise@4.0.1/dist/esm/simplex-noise.js';
 
-        // --- Configuração Básica ---
+        // --- SETUP ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.Fog(0x87CEEB, 100, 450);
 
@@ -70,196 +86,293 @@
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        
-        // --- CONFIGURAÇÃO DE SOMBRAS (O Segredo do Realismo) ---
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Sombras suaves
-        
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Impede ver por baixo do chão
+        controls.maxPolarAngle = Math.PI / 2 - 0.05;
 
         const clock = new THREE.Clock(); 
         const noise2D = createNoise2D();
 
-        // --- ILUMINAÇÃO AVANÇADA ---
+        // --- ILUMINAÇÃO ---
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
         scene.add(ambientLight);
 
-        // O SOL (DirectionalLight)
         const sunLight = new THREE.DirectionalLight(0xffeeb1, 1.5);
         sunLight.position.set(100, 100, 0);
         sunLight.castShadow = true;
-        
-        // !! AQUI ESTÁ A MÁGICA DA SOMBRA !!
-        // Definimos uma "caixa" onde as sombras existem. Tem que ser do tamanho do mundo.
-        const shadowSize = 100; 
-        sunLight.shadow.camera.left = -shadowSize;
-        sunLight.shadow.camera.right = shadowSize;
-        sunLight.shadow.camera.top = shadowSize;
-        sunLight.shadow.camera.bottom = -shadowSize;
-        sunLight.shadow.camera.near = 0.5;
-        sunLight.shadow.camera.far = 500; // Tem que ser longe o suficiente para atingir o chão
-        
-        // Resolução 4K para sombras nítidas nas montanhas
-        sunLight.shadow.mapSize.width = 4096; 
-        sunLight.shadow.mapSize.height = 4096;
-        
-        // Bias resolve "artefatos" (riscos) na sombra
+        sunLight.shadow.mapSize.width = 4096; sunLight.shadow.mapSize.height = 4096;
+        sunLight.shadow.camera.left = -100; sunLight.shadow.camera.right = 100;
+        sunLight.shadow.camera.top = 100; sunLight.shadow.camera.bottom = -100;
         sunLight.shadow.bias = -0.0005; 
         scene.add(sunLight);
 
-        // Esferas Visuais (Sol e Lua)
-        const sunGeo = new THREE.SphereGeometry(5, 32, 32);
-        const sunMat = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
-        const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+        const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(5, 32, 32), new THREE.MeshBasicMaterial({ color: 0xFFFF00 }));
         scene.add(sunMesh);
-
-        const moonGeo = new THREE.SphereGeometry(3, 16, 16);
-        const moonMat = new THREE.MeshBasicMaterial({ color: 0xDDDDFF });
-        const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+        const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(3, 16, 16), new THREE.MeshBasicMaterial({ color: 0xDDDDFF }));
         scene.add(moonMesh);
 
-        // --- Variáveis do Mundo ---
-        const DAY_DURATION = 600; // 10 minutos
-        const SKY_COLORS = {
-            day: new THREE.Color(0x87CEEB),
-            sunset: new THREE.Color(0xFF4500),
-            night: new THREE.Color(0x050510)
-        };
-
+        // --- VARIÁVEIS DE ESTADO ---
+        let seedX = Math.random() * 5000;
+        let seedZ = Math.random() * 5000;
+        let stormSeedX = Math.random() * 5000 + 10000; 
+        let stormSeedZ = Math.random() * 5000 + 10000;
+        
         const worldSize = 140;
         const resolution = 150; 
-        const seedX = Math.random() * 5000;
-        const seedZ = Math.random() * 5000;
-        const stormSeedX = Math.random() * 5000 + 10000; 
-        const stormSeedZ = Math.random() * 5000 + 10000;
+        const DAY_DURATION = 600;
 
-        // -- TERRENO --
-        const geometry = new THREE.PlaneGeometry(worldSize, worldSize, resolution, resolution);
-        geometry.rotateX(-Math.PI / 2);
-        const vertices = geometry.attributes.position;
-        const colors = [];
-        
-        const C_DEEP = new THREE.Color(0x00008B);
-        const C_WATER = new THREE.Color(0x1E90FF);
-        const C_SAND = new THREE.Color(0xE6C288);
-        const C_GRASS = new THREE.Color(0x228B22);
-        const C_ROCK = new THREE.Color(0x696969);
-        const C_SNOW = new THREE.Color(0xFFFFFF);
+        // --- OBJETOS ---
+        let terrain, water;
+        let cities = [];
+        let clouds = [];
+        const citiesGroup = new THREE.Group(); scene.add(citiesGroup);
+        const cloudsGroup = new THREE.Group(); scene.add(cloudsGroup);
 
-        for (let i = 0; i < vertices.count; i++) {
-            const x = vertices.getX(i);
-            const z = vertices.getZ(i);
-            let elevation = noise2D((x + seedX) * 0.02, (z + seedZ) * 0.02);
-            elevation += noise2D((x + seedX) * 0.06, (z + seedZ) * 0.06) * 0.5;
-            elevation *= 8; 
-            vertices.setY(i, elevation);
+        // --- CONSTRUTORES ---
+
+        function buildTerrain() {
+            if(terrain) {
+                // Importante: Limpar geometria e material da memória
+                terrain.geometry.dispose();
+                terrain.material.dispose();
+                scene.remove(terrain);
+            }
+
+            const geometry = new THREE.PlaneGeometry(worldSize, worldSize, resolution, resolution);
+            geometry.rotateX(-Math.PI / 2);
+            const vertices = geometry.attributes.position;
+            const colors = [];
             
-            let c;
-            if (elevation < -2.0) c = C_DEEP;
-            else if (elevation < 0.2) c = C_WATER;
-            else if (elevation < 1.5) c = C_SAND;
-            else if (elevation < 5.5) c = C_GRASS;
-            else if (elevation < 8.5) c = C_ROCK;
-            else c = C_SNOW;
-            colors.push(c.r, c.g, c.b);
-        }
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        geometry.computeVertexNormals();
-        
-        const terrainMaterial = new THREE.MeshStandardMaterial({ 
-            vertexColors: true, 
-            flatShading: true, 
-            roughness: 0.9 
-        });
-        const terrain = new THREE.Mesh(geometry, terrainMaterial);
-        // IMPORTANTE: O Terreno projeta e recebe sombra
-        terrain.castShadow = true;
-        terrain.receiveShadow = true;
-        scene.add(terrain);
+            const C_DEEP = new THREE.Color(0x00008B);
+            const C_WATER = new THREE.Color(0x1E90FF);
+            const C_SAND = new THREE.Color(0xE6C288);
+            const C_GRASS = new THREE.Color(0x228B22);
+            const C_ROCK = new THREE.Color(0x696969);
+            const C_SNOW = new THREE.Color(0xFFFFFF);
 
-        // -- ÁGUA --
-        const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize, resolution, resolution);
-        waterGeometry.rotateX(-Math.PI / 2);
-        const waterMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1E90FF, transparent: true, opacity: 0.75,
-            roughness: 0.1, metalness: 0.6, flatShading: true
-        });
-        const water = new THREE.Mesh(waterGeometry, waterMaterial);
-        water.position.y = 0.2;
-        // IMPORTANTE: A água recebe sombra (das montanhas e nuvens)
-        water.receiveShadow = true; 
-        scene.add(water);
-
-        // -- NUVENS --
-        const clouds = [];
-        const cloudGeo = new THREE.BoxGeometry(1, 1, 1);
-        
-        function criarNuvem() {
-            const cloudGroup = new THREE.Group();
-            const isRain = Math.random() < 0.2;
-            const color = isRain ? 0x555555 : 0xffffff;
-            const mat = new THREE.MeshStandardMaterial({ 
-                color: color, transparent: true, opacity: 0.9, flatShading: true 
-            });
-
-            const flocos = Math.floor(Math.random() * 5) + 3;
-            for(let i=0; i<flocos; i++) {
-                const mesh = new THREE.Mesh(cloudGeo, mat);
-                mesh.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*1.5, (Math.random()-0.5)*2);
-                mesh.scale.set(Math.random()*2+1, Math.random()*1.5+1, Math.random()*2+1);
-                // Nuvens projetam sombra no chão!
-                mesh.castShadow = true; 
-                mesh.receiveShadow = true; // Auto-sombreamento da nuvem
-                cloudGroup.add(mesh);
+            for (let i = 0; i < vertices.count; i++) {
+                const x = vertices.getX(i);
+                const z = vertices.getZ(i);
+                
+                // USANDO AS SEEDS GLOBAIS (que podem ter vindo do load)
+                let elevation = noise2D((x + seedX) * 0.02, (z + seedZ) * 0.02);
+                elevation += noise2D((x + seedX) * 0.06, (z + seedZ) * 0.06) * 0.5;
+                elevation *= 8; 
+                
+                vertices.setY(i, elevation);
+                
+                let c;
+                if (elevation < -2.0) c = C_DEEP;
+                else if (elevation < 0.2) c = C_WATER;
+                else if (elevation < 1.5) c = C_SAND;
+                else if (elevation < 5.5) c = C_GRASS;
+                else if (elevation < 8.5) c = C_ROCK;
+                else c = C_SNOW;
+                colors.push(c.r, c.g, c.b);
             }
-
-            cloudGroup.position.set((Math.random()-0.5)*worldSize*1.5, Math.random()*10+20, (Math.random()-0.5)*worldSize*1.5);
-            cloudGroup.userData = { speed: Math.random()*0.05 + 0.02 };
-            scene.add(cloudGroup);
-            clouds.push(cloudGroup);
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals();
+            
+            terrain = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 }));
+            terrain.castShadow = true;
+            terrain.receiveShadow = true;
+            scene.add(terrain);
         }
-        for(let i=0; i<30; i++) criarNuvem();
 
-        // -- CIDADES --
-        const cities = [];
-        const cityGeometry = new THREE.CylinderGeometry(0.2, 0.6, 1.5, 4);
-        const cityMaterial = new THREE.MeshStandardMaterial({ color: 0x8B0000 });
-        const prefixos = ["Port", "São", "Fort", "Nova", "Val", "Grand"];
-        const sufixos = ["grad", "mouth", "keep", "ia", "dor", "rock"];
+        function buildWater() {
+            if(water) {
+                water.geometry.dispose();
+                water.material.dispose();
+                scene.remove(water);
+            }
+            // Recria a água
+            const geo = new THREE.PlaneGeometry(worldSize, worldSize, resolution, resolution);
+            geo.rotateX(-Math.PI / 2);
+            water = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+                color: 0x1E90FF, transparent: true, opacity: 0.75, roughness: 0.1, metalness: 0.6, flatShading: true
+            }));
+            water.position.y = 0.2;
+            water.receiveShadow = true; 
+            scene.add(water);
+        }
 
-        for(let i = 0; i < 50; i++) { 
-            const x = (Math.random() - 0.5) * (worldSize - 10);
-            const z = (Math.random() - 0.5) * (worldSize - 10);
-            let h = noise2D((x + seedX) * 0.02, (z + seedZ) * 0.02);
-            h += noise2D((x + seedX) * 0.06, (z + seedZ) * 0.06) * 0.5;
-            h *= 8;
-            if (h > 1.5 && h < 5.0) {
-                const city = new THREE.Mesh(cityGeometry, cityMaterial);
-                city.position.set(x, h + 0.75, z);
-                // Cidade projeta sombra
-                city.castShadow = true;
-                city.receiveShadow = true;
-                city.userData = {
-                    name: prefixos[Math.floor(Math.random()*prefixos.length)] + " " + sufixos[Math.floor(Math.random()*sufixos.length)],
-                    pop: Math.floor(Math.random() * 5000) + 100,
-                    type: Math.random() > 0.5 ? "Vila Comercial" : "Forte Militar"
-                };
-                scene.add(city);
-                cities.push(city);
-                if(cities.length >= 12) break; 
+        // Modificado para aceitar lista de cidades carregada
+        function buildCities(loadedData = null) {
+            citiesGroup.clear(); // Remove objetos 3D do grupo
+            cities = []; // Limpa array lógico
+
+            const cityGeometry = new THREE.CylinderGeometry(0.2, 0.6, 1.5, 4);
+            const cityMaterial = new THREE.MeshStandardMaterial({ color: 0x8B0000 });
+
+            // MODO CARREGAR: Usa os dados exatos do arquivo
+            if (loadedData && Array.isArray(loadedData)) {
+                console.log("Reconstruindo " + loadedData.length + " cidades...");
+                loadedData.forEach(data => {
+                    const city = new THREE.Mesh(cityGeometry, cityMaterial);
+                    // Restaura posição exata
+                    city.position.set(data.x, data.y, data.z);
+                    city.castShadow = true;
+                    city.receiveShadow = true;
+                    // Restaura dados (Nome, População)
+                    city.userData = data.userData;
+                    
+                    citiesGroup.add(city);
+                    cities.push(city);
+                });
+            } 
+            // MODO NOVO JOGO: Gera aleatório
+            else {
+                const prefixos = ["Port", "São", "Fort", "Nova", "Val", "Grand"];
+                const sufixos = ["grad", "mouth", "keep", "ia", "dor", "rock"];
+
+                for(let i = 0; i < 50; i++) { 
+                    const x = (Math.random() - 0.5) * (worldSize - 10);
+                    const z = (Math.random() - 0.5) * (worldSize - 10);
+                    let h = noise2D((x + seedX) * 0.02, (z + seedZ) * 0.02);
+                    h += noise2D((x + seedX) * 0.06, (z + seedZ) * 0.06) * 0.5;
+                    h *= 8;
+                    if (h > 1.5 && h < 5.0) {
+                        const city = new THREE.Mesh(cityGeometry, cityMaterial);
+                        city.position.set(x, h + 0.75, z);
+                        city.castShadow = true;
+                        city.receiveShadow = true;
+                        city.userData = {
+                            name: prefixos[Math.floor(Math.random()*prefixos.length)] + " " + sufixos[Math.floor(Math.random()*sufixos.length)],
+                            pop: Math.floor(Math.random() * 5000) + 100,
+                            type: Math.random() > 0.5 ? "Vila Comercial" : "Forte Militar"
+                        };
+                        citiesGroup.add(city);
+                        cities.push(city);
+                        if(cities.length >= 12) break; 
+                    }
+                }
             }
         }
 
-        // -- Interação --
+        function buildClouds() {
+            cloudsGroup.clear();
+            clouds = [];
+            const cloudGeo = new THREE.BoxGeometry(1, 1, 1);
+            
+            for(let i=0; i<30; i++) {
+                const cloudGroup = new THREE.Group();
+                const isRain = Math.random() < 0.2;
+                const mat = new THREE.MeshStandardMaterial({ color: isRain ? 0x555555 : 0xffffff, transparent: true, opacity: 0.9, flatShading: true });
+
+                const flocos = Math.floor(Math.random() * 5) + 3;
+                for(let j=0; j<flocos; j++) {
+                    const mesh = new THREE.Mesh(cloudGeo, mat);
+                    mesh.position.set((Math.random()-0.5)*3, (Math.random()-0.5)*1.5, (Math.random()-0.5)*2);
+                    mesh.scale.set(Math.random()*2+1, Math.random()*1.5+1, Math.random()*2+1);
+                    mesh.castShadow = true; mesh.receiveShadow = true;
+                    cloudGroup.add(mesh);
+                }
+                cloudGroup.position.set((Math.random()-0.5)*worldSize*1.5, Math.random()*10+20, (Math.random()-0.5)*worldSize*1.5);
+                cloudGroup.userData = { speed: Math.random()*0.05 + 0.02 };
+                cloudsGroup.add(cloudGroup);
+                clouds.push(cloudGroup);
+            }
+        }
+
+        // --- LÓGICA DE SALVAR/CARREGAR ---
+
+        function salvarMapa() {
+            // Mapeia apenas os dados essenciais das cidades
+            const citiesData = cities.map(city => ({
+                x: city.position.x,
+                y: city.position.y,
+                z: city.position.z,
+                userData: city.userData
+            }));
+
+            const saveData = {
+                seedX: seedX,
+                seedZ: seedZ,
+                stormSeedX: stormSeedX,
+                stormSeedZ: stormSeedZ,
+                cities: citiesData
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "rpg_world.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function carregarMapa(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // 1. Atualiza as seeds globais
+                    seedX = data.seedX;
+                    seedZ = data.seedZ;
+                    stormSeedX = data.stormSeedX;
+                    stormSeedZ = data.stormSeedZ;
+
+                    console.log("Seeds carregadas:", seedX, seedZ);
+
+                    // 2. Reconstrói o terreno (agora ele vai usar as seeds novas acima)
+                    buildTerrain();
+                    buildWater();
+                    
+                    // 3. Reconstrói as cidades passando os dados salvos
+                    buildCities(data.cities);
+                    
+                    // 4. Nuvens são recriadas aleatoriamente (efeito estético)
+                    buildClouds();
+
+                    console.log("Mapa reconstruído com sucesso!");
+                    
+                    // Limpa o input para permitir carregar o mesmo arquivo novamente se quiser
+                    event.target.value = ''; 
+                } catch (error) {
+                    alert("Erro ao ler o arquivo: " + error);
+                    console.error(error);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function gerarNovoMundo() {
+            seedX = Math.random() * 5000;
+            seedZ = Math.random() * 5000;
+            stormSeedX = Math.random() * 5000 + 10000; 
+            stormSeedZ = Math.random() * 5000 + 10000;
+            buildTerrain();
+            buildWater();
+            buildCities(); // Sem argumentos = gera novas
+            buildClouds();
+        }
+
+        // Event Listeners
+        document.getElementById('btnSave').addEventListener('click', salvarMapa);
+        document.getElementById('btnLoad').addEventListener('click', () => document.getElementById('fileInput').click());
+        document.getElementById('fileInput').addEventListener('change', carregarMapa);
+        document.getElementById('btnNew').addEventListener('click', gerarNovoMundo);
+
+        // Init
+        gerarNovoMundo();
+
+        // --- INTERAÇÃO E ANIMAÇÃO ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         const infoDiv = document.getElementById('info');
+        const SKY_COLORS = { day: new THREE.Color(0x87CEEB), sunset: new THREE.Color(0xFF4500), night: new THREE.Color(0x050510) };
 
         window.addEventListener('click', (event) => {
+            if(event.target.closest('button')) return;
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -275,80 +388,46 @@
             }
         });
 
-        // --- ANIMAÇÃO ---
         function animate() {
             requestAnimationFrame(animate);
-
             const totalTime = clock.getElapsedTime();
             
-            // 1. ÁGUA
-            const positionAttribute = water.geometry.attributes.position;
-            for ( let i = 0; i < positionAttribute.count; i ++ ) {
-                const x = positionAttribute.getX( i );
-                const z = positionAttribute.getZ( i );
-                let stormNoise = noise2D((x + stormSeedX) * 0.04, (z + stormSeedZ) * 0.04);
-                let stormIntensity = stormNoise > 0.3 ? (stormNoise - 0.3) * 2.0 : 0;
-                let finalHeight = 0.2 + (stormIntensity * 1.5);
-                let finalSpeed = 1.0 + (stormIntensity * 2.0);
-
-                const y = Math.sin( x * 0.3 + totalTime * finalSpeed + stormNoise * 5 ) * finalHeight 
-                        + Math.cos( z * 0.2 + totalTime * finalSpeed ) * (finalHeight * 0.5);
-                positionAttribute.setY( i, y );
+            if(water) {
+                const positionAttribute = water.geometry.attributes.position;
+                for ( let i = 0; i < positionAttribute.count; i ++ ) {
+                    const x = positionAttribute.getX( i );
+                    const z = positionAttribute.getZ( i );
+                    let stormNoise = noise2D((x + stormSeedX) * 0.04, (z + stormSeedZ) * 0.04);
+                    let stormIntensity = stormNoise > 0.3 ? (stormNoise - 0.3) * 2.0 : 0;
+                    const y = Math.sin( x * 0.3 + totalTime * (1.0 + stormIntensity*2.0) + stormNoise * 5 ) * (0.2 + stormIntensity*1.5) 
+                            + Math.cos( z * 0.2 + totalTime * (1.0 + stormIntensity*2.0) ) * ((0.2 + stormIntensity*1.5) * 0.5);
+                    positionAttribute.setY( i, y );
+                }
+                positionAttribute.needsUpdate = true;
+                water.geometry.computeVertexNormals();
             }
-            positionAttribute.needsUpdate = true;
-            water.geometry.computeVertexNormals();
 
-            // 2. CICLO DIA/NOITE
             const cycleTime = (totalTime % DAY_DURATION) / DAY_DURATION; 
             const angle = cycleTime * Math.PI * 2; 
-
-            // Movimento Circular (Nascer no Leste, Pôr no Oeste)
-            const sunX = Math.cos(angle) * 120; // Raio orbital
-            const sunY = Math.sin(angle) * 120;
-            
-            sunMesh.position.set(sunX, sunY, 0);
-            
-            // !! O sol real move junto com a esfera !!
-            sunLight.position.copy(sunMesh.position);
-            
+            const sunX = Math.cos(angle) * 120; const sunY = Math.sin(angle) * 120;
+            sunMesh.position.set(sunX, sunY, 0); sunLight.position.copy(sunMesh.position);
             moonMesh.position.set(-sunX, -sunY, 0);
 
-            // Cálculos visuais
             const sunHeight = Math.sin(angle); 
             let targetColor, fogColor, lightIntensity;
-
-            if (sunHeight > 0.2) { 
-                targetColor = SKY_COLORS.day;
-                fogColor = 0x87CEEB;
-                lightIntensity = 1.5;
-            } else if (sunHeight > -0.2) { 
-                targetColor = SKY_COLORS.sunset;
-                fogColor = 0xFF4500;
-                lightIntensity = 0.5;
-            } else {
-                targetColor = SKY_COLORS.night;
-                fogColor = 0x050510;
-                lightIntensity = 0.0;
-            }
+            if (sunHeight > 0.2) { targetColor = SKY_COLORS.day; fogColor = 0x87CEEB; lightIntensity = 1.5; } 
+            else if (sunHeight > -0.2) { targetColor = SKY_COLORS.sunset; fogColor = 0xFF4500; lightIntensity = 0.5; } 
+            else { targetColor = SKY_COLORS.night; fogColor = 0x050510; lightIntensity = 0.0; }
 
             scene.background = scene.background || new THREE.Color();
             scene.background.lerp(targetColor, 0.01);
             scene.fog.color.lerp(new THREE.Color(fogColor), 0.01);
             sunLight.intensity = THREE.MathUtils.lerp(sunLight.intensity, lightIntensity, 0.05);
             
-            // Luz ambiente noturna
-            const ambientTarget = sunHeight < 0 ? 0.3 : 0.6; 
-            ambientLight.intensity = THREE.MathUtils.lerp(ambientLight.intensity, ambientTarget, 0.01);
-            if(sunHeight < 0) ambientLight.color.setHex(0x5555AA); 
-            else ambientLight.color.setHex(0xFFFFFF); 
-
-            // Display de Hora
             const gameHour = Math.floor(cycleTime * 24);
             const gameMin = Math.floor((cycleTime * 24 * 60) % 60);
-            document.getElementById('time-display').innerText = 
-                `Hora: ${gameHour.toString().padStart(2,'0')}:${gameMin.toString().padStart(2,'0')}`;
+            document.getElementById('time-display').innerText = `Hora: ${gameHour.toString().padStart(2,'0')}:${gameMin.toString().padStart(2,'0')}`;
 
-            // 3. NUVENS
             clouds.forEach(cloud => {
                 cloud.position.x += cloud.userData.speed;
                 if(cloud.position.x > worldSize) {
