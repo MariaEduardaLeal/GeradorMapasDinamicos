@@ -5,6 +5,7 @@ import { createTerrain } from './terrain.js';
 import { createWater, updateWater } from './water.js';
 import { setupCities, createCities, getCities } from './cities.js';
 import { setupSky, createClouds, updateSky } from './sky.js';
+import { createVegetation } from './vegetation.js';
 
 // --- ESTADO DO MUNDO ---
 const state = {
@@ -38,6 +39,7 @@ setupCities(scene);
 function generateWorld(loadedData = null) {
     createTerrain(scene, state.seeds);
     createWater(scene);
+    createVegetation(scene, state.seeds);
     createCities(state.seeds, loadedData ? loadedData.cities : null);
     createClouds(); // Nuvens sempre novas
     console.log("Mundo gerado!");
