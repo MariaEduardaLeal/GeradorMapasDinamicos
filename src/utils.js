@@ -110,8 +110,8 @@ for (let i = 0; i < vertices.count; i++) {
 
 
 export const CONFIG = {
-    worldSize: 140,
-    resolution: 150,
+    worldSize: 200,
+    resolution: 190,
     dayDuration: 600,
     colors: {
         deep: new THREE.Color(0x00008B),
