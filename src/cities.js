@@ -3,21 +3,56 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CONFIG, getWorldHeight } from './utils.js';
 
 let cities = []; 
-let cityLocations = []; // Lista de posições para a vegetação ler
-let chimneys = [];      // Lista de chaminés para a fumaça
+let cityLocations = []; 
+let chimneys = [];
+let cityLights = []; 
+
 const citiesGroup = new THREE.Group();
 const labelsGroup = new THREE.Group();
+
+// MATERIAIS
+const windowMat = new THREE.MeshStandardMaterial({ 
+    color: 0x111100,        
+    emissive: 0xFFFF00,     
+    emissiveIntensity: 0    
+});
+
+const torchMat = new THREE.MeshStandardMaterial({ 
+    color: 0x330000, 
+    emissive: 0xFF4500,     
+    emissiveIntensity: 0 
+});
 
 export function setupCities(scene) {
     scene.add(citiesGroup);
     scene.add(labelsGroup);
 }
 
-// --- EXPORTAÇÕES ESSENCIAIS ---
 export function getCities() { return cities; }
-export function getCityLocations() { return cityLocations; } // <--- O ERRO ESTAVA AQUI (FALTAVA ESSA LINHA)
+export function getCityLocations() { return cityLocations; }
 export function getChimneys() { return chimneys; }
-// ------------------------------
+
+export function updateCityLights(sunHeightNorm) {
+    // Começa a acender quando o sol baixa (entardecer)
+    let intensity = 0;
+    if (sunHeightNorm < 0.1) {
+        // Quanto mais baixo o sol, mais forte a luz (até o máximo de 1.0)
+        intensity = THREE.MathUtils.clamp(1.0 - (sunHeightNorm + 0.5) * 1.5, 0, 1);
+    }
+
+    // --- TURBINANDO AS LUZES ---
+    windowMat.emissiveIntensity = intensity * 10.0; // Brilho muito forte na janela
+    torchMat.emissiveIntensity = intensity * 15.0;  // Tocha radiante
+
+    // Tremeluzir do fogo
+    const flicker = Math.random() * 0.5; 
+    
+    cityLights.forEach(light => {
+        // Luz física ilumina muito mais longe (distance=30) e mais forte (intensity=3)
+        light.intensity = (intensity * 3.0) + (intensity > 0 ? flicker : 0);
+        light.visible = intensity > 0.01; 
+    });
+}
 
 function isValidLocation(x, z, seeds) {
     let h = getWorldHeight(x, z, seeds);
@@ -25,31 +60,26 @@ function isValidLocation(x, z, seeds) {
     return null;
 }
 
-// --- MODELOS ---
+// MODELOS
 function createHouseModel(userData) {
     const group = new THREE.Group();
-    
-    // Base
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0xF5F5DC, flatShading: true }));
     base.position.y = 0.35; base.castShadow = true; base.receiveShadow = true; base.userData = userData;
     group.add(base);
 
-    // Telhado
     const roof = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.6, 4), new THREE.MeshStandardMaterial({ color: 0xB22222, flatShading: true }));
     roof.position.y = 1.0; roof.rotation.y = Math.PI / 4; roof.castShadow = true; roof.userData = userData;
     group.add(roof);
 
-    // Porta
     const door = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.4), new THREE.MeshStandardMaterial({ color: 0x4A3000, side: THREE.DoubleSide }));
     door.position.set(0, 0.35, 0.41); group.add(door);
 
-    // Chaminé
-    const chimGeo = new THREE.BoxGeometry(0.15, 0.4, 0.15);
-    const chimMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const chimney = new THREE.Mesh(chimGeo, chimMat);
-    chimney.position.set(0.2, 0.9, 0.2); 
-    group.add(chimney);
-    
+    const windowMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.25), windowMat);
+    windowMesh.position.set(0.41, 0.45, 0); windowMesh.rotation.y = Math.PI / 2;
+    group.add(windowMesh);
+
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+    chimney.position.set(0.2, 0.9, 0.2); group.add(chimney);
     group.userData.chimneyPos = new THREE.Vector3(0.2, 1.2, 0.2); 
 
     return group;
@@ -70,12 +100,24 @@ function createCastleModel(userData) {
 
     const subTowerGeo = new THREE.CylinderGeometry(0.25, 0.3, 1.5, 5);
     const subRoofGeo = new THREE.ConeGeometry(0.35, 0.6, 5);
-    [[0.6, 0.6], [-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6]].forEach(pos => {
+    const torchGeo = new THREE.SphereGeometry(0.15, 4, 4); 
+
+    [[0.6, 0.6], [-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6]].forEach((pos) => {
         const t = new THREE.Mesh(subTowerGeo, wallMat);
         t.position.set(pos[0], 0.75, pos[1]); t.castShadow = true; t.userData = userData; group.add(t);
         const r = new THREE.Mesh(subRoofGeo, roofMat);
         r.position.set(pos[0], 1.8, pos[1]); group.add(r);
+
+        const torch = new THREE.Mesh(torchGeo, torchMat);
+        torch.position.set(pos[0], 2.2, pos[1]);
+        group.add(torch);
     });
+
+    // Luz maior
+    const castleLight = new THREE.PointLight(0xFF6600, 0, 30); 
+    castleLight.position.set(0, 2.5, 0);
+    group.add(castleLight);
+    cityLights.push(castleLight);
 
     return group;
 }
@@ -89,6 +131,7 @@ export function createCities(seeds, loadedData = null) {
     cities = [];
     cityLocations = [];
     chimneys = [];
+    cityLights = [];
 
     const prefixos = ["Port", "São", "Fort", "Nova", "Val", "Grand", "Pedra", "Luz"];
     const sufixos = ["grad", "mouth", "keep", "ia", "dor", "rock", "polis", "mont"];
@@ -111,7 +154,6 @@ export function createCities(seeds, loadedData = null) {
 
             if (foundSpot) {
                 spawnCity(cx, ch, cz, { name: "Reino de " + prefixos[Math.floor(Math.random()*prefixos.length)], pop: Math.floor(Math.random() * 5000) + 2000, type: "Castelo Real" }, true);
-
                 const numVillages = Math.floor(Math.random() * 5) + 2;
                 for(let j=0; j < numVillages; j++) {
                     for(let tryV = 0; tryV < 10; tryV++) {
@@ -135,19 +177,9 @@ function spawnCity(x, h, z, userData, isCastle) {
     const model3D = isCastle ? createCastleModel(userData) : createHouseModel(userData);
     model3D.position.set(x, h, z);
     citiesGroup.add(model3D);
-
     model3D.traverse((child) => { if (child.isMesh) cities.push(child); });
-
-    // Registra localização para vegetação
     cityLocations.push({ x: x, z: z, radius: isCastle ? 12 : 5 });
-
-    // Registra chaminé para fumaça
-    if (model3D.userData.chimneyPos) {
-        chimneys.push({
-            parent: model3D,
-            offset: model3D.userData.chimneyPos
-        });
-    }
+    if (model3D.userData.chimneyPos) { chimneys.push({ parent: model3D, offset: model3D.userData.chimneyPos }); }
 
     const div = document.createElement('div');
     div.className = 'label ' + (isCastle ? 'label-castle' : 'label-village');

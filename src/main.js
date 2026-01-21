@@ -4,18 +4,16 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CONFIG, getWorldHeight } from './utils.js';
 import { createTerrain } from './terrain.js';
 import { createWater, updateWater } from './water.js';
-import { setupCities, createCities, getCities, getChimneys } from './cities.js';
+import { setupCities, createCities, getCities, getChimneys, updateCityLights } from './cities.js';
 import { setupSky, createClouds, updateSky } from './sky.js';
 import { createVegetation } from './vegetation.js';
 import { setupParticles, updateParticles, spawnSmoke } from './particles.js';
 
-// --- ESTADO DO MUNDO ---
 const state = {
     seeds: { x: Math.random() * 5000, z: Math.random() * 5000 },
     stormSeeds: { x: Math.random() * 5000 + 10000, z: Math.random() * 5000 + 10000 }
 };
 
-// --- SETUP THREE.JS ---
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x87CEEB, 100, 450);
 
@@ -35,22 +33,41 @@ labelRenderer.domElement.style.top = '0px';
 labelRenderer.domElement.style.pointerEvents = 'none'; 
 document.body.appendChild(labelRenderer.domElement);
 
-// No arquivo src/main.js
-
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; 
-controls.dampingFactor = 0.05; 
-controls.maxPolarAngle = Math.PI / 2 - 0.05; // Não deixa a câmera ir para baixo do chão
+controls.enableDamping = true; controls.dampingFactor = 0.05; 
+controls.maxPolarAngle = Math.PI / 2 - 0.05;
+controls.minDistance = 20; controls.maxDistance = 250; controls.zoomSpeed = 0.3;
 
-// --- CONFIGURAÇÃO DO ZOOM (O SEGREDO ESTÁ AQUI) ---
-controls.minDistance = 20;   // Não deixa chegar muito perto (evita atravessar o chão)
-controls.maxDistance = 250;  // Não deixa ir muito longe
-controls.zoomSpeed = 0.3;    // Deixa o zoom bem suave (padrão é 1.0, que é muito rápido)
-controls.rotateSpeed = 0.5;  // (Opcional) Deixa o giro da câmera mais suave também
+// --- CRIAÇÃO DO SLIDER DE TEMPO ---
+const sliderContainer = document.createElement('div');
+sliderContainer.style.position = 'absolute';
+sliderContainer.style.bottom = '20px';
+sliderContainer.style.right = '20px';
+sliderContainer.style.background = 'rgba(0,0,0,0.7)';
+sliderContainer.style.padding = '10px';
+sliderContainer.style.borderRadius = '8px';
+sliderContainer.style.color = 'white';
+sliderContainer.innerHTML = `
+    <label style="font-family: sans-serif; font-size: 14px;">⏳ Hora do Dia</label><br>
+    <input type="range" id="timeSlider" min="0" max="2400" value="1200" style="width: 200px; cursor: pointer;">
+`;
+document.body.appendChild(sliderContainer);
+
+const timeSlider = document.getElementById('timeSlider');
+let manualTime = 12 * 60; // Começa meio-dia (minutos)
+let isDraggingSlider = false;
+
+timeSlider.addEventListener('input', (e) => {
+    isDraggingSlider = true;
+    manualTime = parseInt(e.target.value); // Valor em minutos (0 a 2400)
+});
+timeSlider.addEventListener('change', () => {
+    isDraggingSlider = false; // Soltou o slider, o tempo volta a correr
+});
+// -----------------------------------
 
 const clock = new THREE.Clock();
 
-// --- INICIALIZAÇÃO ---
 setupSky(scene);
 setupCities(scene);
 setupParticles(scene); 
@@ -58,18 +75,14 @@ setupParticles(scene);
 function generateWorld(loadedData = null) {
     createTerrain(scene, state.seeds);
     createWater(scene);
-    
     createCities(state.seeds, loadedData ? loadedData.cities : null);
     createVegetation(scene, state.seeds);
-    
     createClouds(); 
-
     console.log("Mundo gerado!");
 }
 
 generateWorld();
 
-// --- INTERAÇÃO (DRAG & DROP) ---
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); 
@@ -81,7 +94,7 @@ window.addEventListener('pointermove', onPointerMove);
 window.addEventListener('pointerup', onPointerUp);
 
 function onPointerDown(event) {
-    if (event.target.closest('button')) return;
+    if (event.target.closest('button') || event.target.closest('input')) return;
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
@@ -115,7 +128,6 @@ function onPointerMove(event) {
 
 function onPointerUp() { draggingCity = null; controls.enabled = true; }
 
-// --- SAVE / LOAD / NEW ---
 function saveGame() {
     const uniqueCities = new Set();
     const citiesData = [];
@@ -167,16 +179,27 @@ window.addEventListener('resize', () => {
     labelRenderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// --- LOOP PRINCIPAL ---
 function animate() {
     requestAnimationFrame(animate);
+    const delta = clock.getDelta(); // Tempo entre frames
     const totalTime = clock.getElapsedTime();
-    const cycleTime = (totalTime % CONFIG.dayDuration) / CONFIG.dayDuration;
 
+    // Se não estiver mexendo no slider, o tempo avança sozinho
+    if (!isDraggingSlider) {
+        manualTime += delta * 100; // Velocidade do tempo (60x)
+        if (manualTime >= 2400) manualTime = 0; // Reseta dia
+        timeSlider.value = manualTime; // Atualiza visual do slider
+    }
+
+    // Converte minutos (0-2400) para ciclo (0.0 a 1.0)
+    // Dividimos por 2400 pq 24h * 100 (escala do slider)
+    const cycleTime = (manualTime % 2400) / 2400;
+
+    // Atualiza Sky e recebe a altura normalizada do sol
+    const sunHeightNorm = updateSky(scene, cycleTime);
+    updateCityLights(sunHeightNorm);
     updateWater(totalTime, state.stormSeeds);
-    updateSky(scene, cycleTime);
 
-    // Fumaça saindo das chaminés
     if (Math.floor(totalTime * 60) % 5 === 0) {
         const chimneys = getChimneys();
         chimneys.forEach(c => {
@@ -184,9 +207,9 @@ function animate() {
             spawnSmoke(worldPos.x, worldPos.y, worldPos.z);
         });
     }
-    
     updateParticles();
 
+    // UI
     const gameHour = Math.floor(cycleTime * 24);
     const gameMin = Math.floor((cycleTime * 24 * 60) % 60);
     document.getElementById('time-display').innerText = `Hora: ${gameHour.toString().padStart(2,'0')}:${gameMin.toString().padStart(2,'0')}`;
