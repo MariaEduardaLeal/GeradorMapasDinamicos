@@ -53,8 +53,8 @@ setupCities(scene);
 function generateWorld(loadedData = null) {
     createTerrain(scene, state.seeds);
     createWater(scene);
-    createVegetation(scene, state.seeds);
     createCities(state.seeds, loadedData ? loadedData.cities : null);
+    createVegetation(scene, state.seeds);
     createClouds(); // Nuvens sempre novas
     console.log("Mundo gerado!");
 }
