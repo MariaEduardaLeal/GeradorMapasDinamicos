@@ -6,8 +6,6 @@ const cloudsGroup = new THREE.Group();
 const clouds = [];
 
 export function setupSky(scene) {
-    // Inicializa o background com a cor do dia para evitar erro de nulo
-    // Se CONFIG.colors.skyDay não existir, usa azul padrão
     const defaultSky = CONFIG.colors.skyDay || new THREE.Color(0x87CEEB);
     scene.background = new THREE.Color(defaultSky);
 
