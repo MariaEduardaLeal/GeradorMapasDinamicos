@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CONFIG } from './utils.js';
 import { createTerrain } from './terrain.js';
 import { createWater, updateWater } from './water.js';
@@ -26,9 +27,22 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0px';
+labelRenderer.domElement.style.pointerEvents = 'none'; // Permite clicar através do texto
+document.body.appendChild(labelRenderer.domElement);
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.dampingFactor = 0.05;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
+
+controls.minDistance = 20;  // Impede de chegar muito perto (evita bugs visuais)
+controls.maxDistance = 250; // Impede de se afastar demais do mapa
+controls.zoomSpeed = 0.3;
 
 const clock = new THREE.Clock();
 
@@ -92,6 +106,7 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // Raycaster (Clique nas cidades)
@@ -133,6 +148,7 @@ function animate() {
 
     controls.update();
     renderer.render(scene, camera);
+    labelRenderer.render(scene, camera);
 }
 
 animate();

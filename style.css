@@ -40,3 +40,29 @@ body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
     border: 1px solid rgba(255,255,255,0.3);
     text-shadow: 0 0 5px black;
 }
+
+.label {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px 8px;
+    border-radius: 12px;
+    pointer-events: none; /* Deixa o clique passar para o 3D */
+    text-shadow: 0 1px 2px black;
+    white-space: nowrap;
+    transition: 0.3s opacity;
+}
+
+.label-castle {
+    border: 2px solid #ffd700; /* Dourado para Reis */
+    background: rgba(50, 0, 0, 0.8);
+    font-size: 14px;
+    transform: translateY(-20px); /* Fica um pouco mais alto */
+}
+
+.label-village {
+    border: 1px solid #d4af37;
+    background: rgba(0, 50, 0, 0.6);
+}
