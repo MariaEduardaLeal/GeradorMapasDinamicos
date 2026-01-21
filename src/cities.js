@@ -3,7 +3,8 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CONFIG, getWorldHeight } from './utils.js';
 
 let cities = []; 
-let cityLocations = []; // <--- NOVA LISTA: Guarda só as posições (leve para ler)
+let cityLocations = []; // Lista de posições para a vegetação ler
+let chimneys = [];      // Lista de chaminés para a fumaça
 const citiesGroup = new THREE.Group();
 const labelsGroup = new THREE.Group();
 
@@ -12,8 +13,11 @@ export function setupCities(scene) {
     scene.add(labelsGroup);
 }
 
+// --- EXPORTAÇÕES ESSENCIAIS ---
 export function getCities() { return cities; }
-export function getCityLocations() { return cityLocations; } // <--- EXPORTA PARA A VEGETAÇÃO LER
+export function getCityLocations() { return cityLocations; } // <--- O ERRO ESTAVA AQUI (FALTAVA ESSA LINHA)
+export function getChimneys() { return chimneys; }
+// ------------------------------
 
 function isValidLocation(x, z, seeds) {
     let h = getWorldHeight(x, z, seeds);
@@ -21,25 +25,33 @@ function isValidLocation(x, z, seeds) {
     return null;
 }
 
-// --- MODELOS (Mantidos iguais) ---
+// --- MODELOS ---
 function createHouseModel(userData) {
     const group = new THREE.Group();
-    const baseGeo = new THREE.BoxGeometry(0.8, 0.7, 0.8);
-    const baseMat = new THREE.MeshStandardMaterial({ color: 0xF5F5DC, flatShading: true }); 
-    const base = new THREE.Mesh(baseGeo, baseMat);
+    
+    // Base
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0xF5F5DC, flatShading: true }));
     base.position.y = 0.35; base.castShadow = true; base.receiveShadow = true; base.userData = userData;
     group.add(base);
 
-    const roofGeo = new THREE.ConeGeometry(0.65, 0.6, 4); 
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0xB22222, flatShading: true }); 
-    const roof = new THREE.Mesh(roofGeo, roofMat);
+    // Telhado
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.6, 4), new THREE.MeshStandardMaterial({ color: 0xB22222, flatShading: true }));
     roof.position.y = 1.0; roof.rotation.y = Math.PI / 4; roof.castShadow = true; roof.userData = userData;
     group.add(roof);
 
-    const doorGeo = new THREE.PlaneGeometry(0.3, 0.4);
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0x4A3000, side: THREE.DoubleSide });
-    const door = new THREE.Mesh(doorGeo, doorMat);
+    // Porta
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.4), new THREE.MeshStandardMaterial({ color: 0x4A3000, side: THREE.DoubleSide }));
     door.position.set(0, 0.35, 0.41); group.add(door);
+
+    // Chaminé
+    const chimGeo = new THREE.BoxGeometry(0.15, 0.4, 0.15);
+    const chimMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const chimney = new THREE.Mesh(chimGeo, chimMat);
+    chimney.position.set(0.2, 0.9, 0.2); 
+    group.add(chimney);
+    
+    group.userData.chimneyPos = new THREE.Vector3(0.2, 1.2, 0.2); 
+
     return group;
 }
 
@@ -64,6 +76,7 @@ function createCastleModel(userData) {
         const r = new THREE.Mesh(subRoofGeo, roofMat);
         r.position.set(pos[0], 1.8, pos[1]); group.add(r);
     });
+
     return group;
 }
 
@@ -74,7 +87,8 @@ export function createCities(seeds, loadedData = null) {
     citiesGroup.clear();
     labelsGroup.clear();
     cities = [];
-    cityLocations = []; // Limpa posições antigas
+    cityLocations = [];
+    chimneys = [];
 
     const prefixos = ["Port", "São", "Fort", "Nova", "Val", "Grand", "Pedra", "Luz"];
     const sufixos = ["grad", "mouth", "keep", "ia", "dor", "rock", "polis", "mont"];
@@ -87,9 +101,7 @@ export function createCities(seeds, loadedData = null) {
     } else {
         const numKingdoms = 6; 
         for (let i = 0; i < numKingdoms; i++) {
-            let cx, cz, ch;
-            let foundSpot = false;
-
+            let cx, cz, ch, foundSpot = false;
             for(let tryK = 0; tryK < 30; tryK++) {
                 cx = (Math.random() - 0.5) * (CONFIG.worldSize - 20);
                 cz = (Math.random() - 0.5) * (CONFIG.worldSize - 20);
@@ -98,12 +110,7 @@ export function createCities(seeds, loadedData = null) {
             }
 
             if (foundSpot) {
-                const castleName = "Reino de " + prefixos[Math.floor(Math.random()*prefixos.length)];
-                spawnCity(cx, ch, cz, {
-                    name: castleName,
-                    pop: Math.floor(Math.random() * 5000) + 2000,
-                    type: "Castelo Real"
-                }, true);
+                spawnCity(cx, ch, cz, { name: "Reino de " + prefixos[Math.floor(Math.random()*prefixos.length)], pop: Math.floor(Math.random() * 5000) + 2000, type: "Castelo Real" }, true);
 
                 const numVillages = Math.floor(Math.random() * 5) + 2;
                 for(let j=0; j < numVillages; j++) {
@@ -113,14 +120,8 @@ export function createCities(seeds, loadedData = null) {
                         const vx = cx + Math.cos(angle) * dist;
                         const vz = cz + Math.sin(angle) * dist;
                         const vh = isValidLocation(vx, vz, seeds);
-
                         if (vh !== null) {
-                            const vilName = prefixos[Math.floor(Math.random()*prefixos.length)] + " " + sufixos[Math.floor(Math.random()*sufixos.length)];
-                            spawnCity(vx, vh, vz, {
-                                name: vilName,
-                                pop: Math.floor(Math.random() * 500) + 50,
-                                type: "Vila"
-                            }, false);
+                            spawnCity(vx, vh, vz, { name: prefixos[Math.floor(Math.random()*prefixos.length)] + " " + sufixos[Math.floor(Math.random()*sufixos.length)], pop: Math.floor(Math.random() * 500) + 50, type: "Vila" }, false);
                             break;
                         }
                     }
@@ -135,13 +136,18 @@ function spawnCity(x, h, z, userData, isCastle) {
     model3D.position.set(x, h, z);
     citiesGroup.add(model3D);
 
-    model3D.traverse((child) => {
-        if (child.isMesh) cities.push(child);
-    });
+    model3D.traverse((child) => { if (child.isMesh) cities.push(child); });
 
-    // --- REGISTRA A POSIÇÃO ---
-    // Castelo "limpa" uma área de raio 12, Vila limpa raio 5
+    // Registra localização para vegetação
     cityLocations.push({ x: x, z: z, radius: isCastle ? 12 : 5 });
+
+    // Registra chaminé para fumaça
+    if (model3D.userData.chimneyPos) {
+        chimneys.push({
+            parent: model3D,
+            offset: model3D.userData.chimneyPos
+        });
+    }
 
     const div = document.createElement('div');
     div.className = 'label ' + (isCastle ? 'label-castle' : 'label-village');
