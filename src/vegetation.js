@@ -1,93 +1,142 @@
 import * as THREE from 'three';
 import { noise2D, CONFIG } from './utils.js';
 
-let trunksMesh = null;
-let leavesMesh = null;
+// Variáveis globais para armazenar as malhas atuais
+let trunkMesh = null;
+let pineMesh = null;
+let broadleafMesh = null;
+let cactusMesh = null;
 
-// Geometrias reutilizáveis (Low Poly)
-const trunkGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.6, 5); // Tronco hexagonal/pentagonal
-// const leavesGeo = new THREE.ConeGeometry(0.6, 1.2, 5); // Copa cônica
-const leavesGeo = new THREE.IcosahedronGeometry(0.6, 0);
+// --- GEOMETRIAS (Reutilizáveis) ---
+// Dodecaedro: Raio 0.6, Detalhe 0 (Garante o visual Low Poly)
+const broadleafGeo = new THREE.DodecahedronGeometry(0.6, 0); 
+const trunkGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.6, 5); 
+const pineGeo = new THREE.ConeGeometry(0.5, 1.5, 5);
+const cactusGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.0, 6);
 
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, flatShading: true });
-const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228B22, flatShading: true });
+// --- MATERIAIS ---
+const woodMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, flatShading: true });
+const greenMat = new THREE.MeshStandardMaterial({ color: 0x228B22, flatShading: true });
+const darkGreenMat = new THREE.MeshStandardMaterial({ color: 0x0E3608, flatShading: true });
+const cactusMat = new THREE.MeshStandardMaterial({ color: 0x669900, flatShading: true });
 
 export function createVegetation(scene, seeds) {
-    // 1. Limpeza
-    if (trunksMesh) {
-        trunksMesh.dispose(); // Função auxiliar para limpar do InstancedMesh se existisse
-        scene.remove(trunksMesh);
+    // --- LIMPEZA DE MEMÓRIA ---
+    // Removemos apenas os meshes da cena. 
+    // NÃO usamos dispose() aqui porque queremos reutilizar as geometrias const acima.
+    if (trunkMesh) {
+        scene.remove(trunkMesh);
+        trunkMesh = null;
     }
-    if (leavesMesh) {
-        scene.remove(leavesMesh);
+    if (broadleafMesh) {
+        scene.remove(broadleafMesh);
+        broadleafMesh = null;
+    }
+    if (pineMesh) {
+        scene.remove(pineMesh);
+        pineMesh = null;
+    }
+    if (cactusMesh) {
+        scene.remove(cactusMesh);
+        cactusMesh = null;
     }
 
-    // 2. Configuração
-    const treeCount = 4000; // Quantidade máxima de árvores
-    const dummy = new THREE.Object3D(); // Objeto auxiliar para calcular posições
-    
-    // InstancedMesh: O segredo da performance
-    trunksMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
-    leavesMesh = new THREE.InstancedMesh(leavesGeo, leavesMat, treeCount);
-    
-    trunksMesh.castShadow = true; trunksMesh.receiveShadow = true;
-    leavesMesh.castShadow = true; leavesMesh.receiveShadow = true;
+    const count = 3000;
+    const dummy = new THREE.Object3D();
 
-    let index = 0;
+    // Criação dos InstancedMeshes
+    trunkMesh = new THREE.InstancedMesh(trunkGeo, woodMat, count);
+    broadleafMesh = new THREE.InstancedMesh(broadleafGeo, greenMat, count);
+    pineMesh = new THREE.InstancedMesh(pineGeo, darkGreenMat, count);
+    cactusMesh = new THREE.InstancedMesh(cactusGeo, cactusMat, count);
+
+    // Habilita sombras
+    [trunkMesh, broadleafMesh, pineMesh, cactusMesh].forEach(m => {
+        m.castShadow = true; m.receiveShadow = true;
+    });
+
+    // Contadores
+    let iBroad = 0;
+    let iPine = 0;
+    let iCactus = 0;
+
     const sX = seeds.x;
     const sZ = seeds.z;
 
-    // 3. Espalhar árvores
-    // Tentamos posições aleatórias até preencher o limite ou cansar
-    for (let i = 0; i < treeCount * 2; i++) {
-        if (index >= treeCount) break;
-
+    for (let i = 0; i < count * 3; i++) {
         const x = (Math.random() - 0.5) * CONFIG.worldSize;
         const z = (Math.random() - 0.5) * CONFIG.worldSize;
 
-        // Recalcula a altura do terreno neste ponto exato
+        // Cálculo de Altura
         let h = noise2D((x + sX) * 0.02, (z + sZ) * 0.02);
         h += noise2D((x + sX) * 0.06, (z + sZ) * 0.06) * 0.5;
         h *= 8;
 
-        // Regras de Plantio:
-        // - Altura > 1.8 (Não nasce na areia/água)
-        // - Altura < 6.5 (Não nasce na pedra/neve)
-        // - Noise Extra: Cria "manchas" de floresta densa e clareiras
-        const density = noise2D((x + sX) * 0.1, (z + sZ) * 0.1); // Ruído de alta frequência para agrupar árvores
+        // Cálculo de Umidade
+        let m = noise2D((x + sX + 1000) * 0.03, (z + sZ + 1000) * 0.03);
+        const density = noise2D((x + sX) * 0.1, (z + sZ) * 0.1);
 
-        if (h > 1.8 && h < 6.5 && density > -0.2) {
+        // Apenas planta se estiver em terra firme (acima da areia, abaixo dos picos mais altos)
+        if (h > 1.8 && h < 9.0 && density > -0.3) {
             
-            // Variação de tamanho
-            const scale = 0.8 + Math.random() * 0.6; 
+            // BIOMA: DESERTO (Baixo e Seco)
+            if (m < -0.4 && h < 6.0) {
+                if (iCactus < count) {
+                    dummy.position.set(x, h + 0.5, z);
+                    dummy.scale.set(1, 0.8 + Math.random() * 0.5, 1);
+                    dummy.rotation.set(0, Math.random(), 0);
+                    dummy.updateMatrix();
+                    cactusMesh.setMatrixAt(iCactus++, dummy.matrix);
+                }
+            }
+            // BIOMA: NEVE (Alto)
+            else if (h > 6.0) {
+                if (iPine < count) {
+                    dummy.position.set(x, h + 0.75, z);
+                    dummy.scale.set(1, 1 + Math.random(), 1);
+                    dummy.updateMatrix();
+                    pineMesh.setMatrixAt(iPine++, dummy.matrix);
+                }
+            }
+            // BIOMA: FLORESTA (O resto)
+            else {
+                if (iBroad < count) {
+                    const scale = 0.8 + Math.random() * 0.6;
+                    
+                    // Tronco
+                    dummy.position.set(x, h + 0.3, z);
+                    dummy.scale.set(scale, scale, scale);
+                    dummy.rotation.set(0, Math.random() * Math.PI, 0);
+                    dummy.updateMatrix();
+                    trunkMesh.setMatrixAt(iBroad, dummy.matrix);
 
-            // -- Posicionar Tronco --
-            dummy.position.set(x, h + 0.3, z); // +0.3 para metade do tronco ficar pra fora
-            dummy.rotation.set(0, Math.random() * Math.PI, 0); // Rotação aleatória
-            dummy.scale.set(scale, scale, scale);
-            dummy.updateMatrix();
-            trunksMesh.setMatrixAt(index, dummy.matrix);
+                    // Copa
+                    dummy.position.set(x, h + 0.3 + (0.6 * scale), z);
+                    dummy.scale.set(scale, scale, scale);
+                    dummy.updateMatrix();
+                    broadleafMesh.setMatrixAt(iBroad, dummy.matrix);
 
-            // -- Posicionar Copa --
-            dummy.position.set(x, h + 0.3 + (0.6 * scale), z); // Em cima do tronco
-            dummy.scale.set(scale, scale, scale);
-            dummy.updateMatrix();
-            leavesMesh.setMatrixAt(index, dummy.matrix);
-            
-            // Variação de cor da folha (Verde claro a escuro)
-            const colorVar = Math.random() * 0.2;
-            const leafColor = new THREE.Color(0x228B22).offsetHSL(0, 0, colorVar - 0.1);
-            leavesMesh.setColorAt(index, leafColor);
-
-            index++;
+                    // Variação de cor da folha
+                    const leafColor = new THREE.Color(0x228B22).offsetHSL(0, 0, Math.random() * 0.2 - 0.1);
+                    if(m > 0.5) leafColor.setHex(0x004400); 
+                    broadleafMesh.setColorAt(iBroad, leafColor);
+                    
+                    iBroad++;
+                }
+            }
         }
     }
 
-    // Importante: Avisar ao Three.js que as matrizes estão prontas
-    trunksMesh.instanceMatrix.needsUpdate = true;
-    leavesMesh.instanceMatrix.needsUpdate = true;
-    leavesMesh.instanceColor.needsUpdate = true; // Necessário para cores variadas
+    // Atualiza as matrizes para renderizar
+    trunkMesh.instanceMatrix.needsUpdate = true;
+    broadleafMesh.instanceMatrix.needsUpdate = true;
+    broadleafMesh.instanceColor.needsUpdate = true;
+    pineMesh.instanceMatrix.needsUpdate = true;
+    cactusMesh.instanceMatrix.needsUpdate = true;
 
-    scene.add(trunksMesh);
-    scene.add(leavesMesh);
+    // Adiciona à cena
+    scene.add(trunkMesh);
+    scene.add(broadleafMesh);
+    scene.add(pineMesh);
+    scene.add(cactusMesh);
 }
