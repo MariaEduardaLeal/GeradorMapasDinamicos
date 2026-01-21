@@ -100,10 +100,6 @@ O código foi modularizado para facilitar a manutenção:
 |**Novo Mundo**|Botão "Novo Mundo"|
 
 ##  Futuras Melhorias (Ideias)
-
-- [ ] Adicionar vegetação (árvores low poly).
-    
-- [ ] Implementar biomas visuais distintos (Deserto, Neve) afetando a geometria.
     
 - [ ] Adicionar monstros ou barcos que se movem.
     
