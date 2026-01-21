@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { noise2D, CONFIG } from './utils.js';
+// 1. Importamos a nova função getWorldHeight aqui
+import { noise2D, CONFIG, getWorldHeight } from './utils.js';
 
 // Variáveis globais para armazenar as malhas atuais
 let trunkMesh = null;
@@ -8,7 +9,6 @@ let broadleafMesh = null;
 let cactusMesh = null;
 
 // --- GEOMETRIAS (Reutilizáveis) ---
-// Dodecaedro: Raio 0.6, Detalhe 0 (Garante o visual Low Poly)
 const broadleafGeo = new THREE.DodecahedronGeometry(0.6, 0); 
 const trunkGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.6, 5); 
 const pineGeo = new THREE.ConeGeometry(0.5, 1.5, 5);
@@ -22,26 +22,13 @@ const cactusMat = new THREE.MeshStandardMaterial({ color: 0x669900, flatShading:
 
 export function createVegetation(scene, seeds) {
     // --- LIMPEZA DE MEMÓRIA ---
-    // Removemos apenas os meshes da cena. 
-    // NÃO usamos dispose() aqui porque queremos reutilizar as geometrias const acima.
-    if (trunkMesh) {
-        scene.remove(trunkMesh);
-        trunkMesh = null;
-    }
-    if (broadleafMesh) {
-        scene.remove(broadleafMesh);
-        broadleafMesh = null;
-    }
-    if (pineMesh) {
-        scene.remove(pineMesh);
-        pineMesh = null;
-    }
-    if (cactusMesh) {
-        scene.remove(cactusMesh);
-        cactusMesh = null;
-    }
+    if (trunkMesh) { scene.remove(trunkMesh); trunkMesh = null; }
+    if (broadleafMesh) { scene.remove(broadleafMesh); broadleafMesh = null; }
+    if (pineMesh) { scene.remove(pineMesh); pineMesh = null; }
+    if (cactusMesh) { scene.remove(cactusMesh); cactusMesh = null; }
 
-    const count = 3000;
+    // Aumentei a contagem pois agora temos mais terra firme
+    const count = 5000;
     const dummy = new THREE.Object3D();
 
     // Criação dos InstancedMeshes
@@ -50,12 +37,10 @@ export function createVegetation(scene, seeds) {
     pineMesh = new THREE.InstancedMesh(pineGeo, darkGreenMat, count);
     cactusMesh = new THREE.InstancedMesh(cactusGeo, cactusMat, count);
 
-    // Habilita sombras
     [trunkMesh, broadleafMesh, pineMesh, cactusMesh].forEach(m => {
         m.castShadow = true; m.receiveShadow = true;
     });
 
-    // Contadores
     let iBroad = 0;
     let iPine = 0;
     let iCactus = 0;
@@ -63,24 +48,24 @@ export function createVegetation(scene, seeds) {
     const sX = seeds.x;
     const sZ = seeds.z;
 
-    for (let i = 0; i < count * 3; i++) {
+    for (let i = 0; i < count * 4; i++) { // Tento mais vezes para preencher bem
         const x = (Math.random() - 0.5) * CONFIG.worldSize;
         const z = (Math.random() - 0.5) * CONFIG.worldSize;
 
-        // Cálculo de Altura
-        let h = noise2D((x + sX) * 0.02, (z + sZ) * 0.02);
-        h += noise2D((x + sX) * 0.06, (z + sZ) * 0.06) * 0.5;
-        h *= 8;
+        // --- MUDANÇA PRINCIPAL AQUI ---
+        // Em vez de recalcular o noise na mão, perguntamos ao utils: "Qual a altura aqui?"
+        let h = getWorldHeight(x, z, seeds);
+        // ------------------------------
 
-        // Cálculo de Umidade
-        let m = noise2D((x + sX + 1000) * 0.03, (z + sZ + 1000) * 0.03);
-        const density = noise2D((x + sX) * 0.1, (z + sZ) * 0.1);
-
-        // Apenas planta se estiver em terra firme (acima da areia, abaixo dos picos mais altos)
-        if (h > 1.8 && h < 9.0 && density > -0.3) {
+        // Cálculo de Umidade (mantém a lógica local para variar biomas)
+        let m = noise2D((x + sX + 1000) * 0.02, (z + sZ + 1000) * 0.02);
+        
+        // Apenas planta se estiver em terra firme e não for pico muito alto
+        // Ajustei os limites: > 1.0 (sai da praia) e < 10.0 (abaixo do pico de neve)
+        if (h > 1.5 && h < 10.0) {
             
             // BIOMA: DESERTO (Baixo e Seco)
-            if (m < -0.4 && h < 6.0) {
+            if (m < -0.3 && h < 6.0) {
                 if (iCactus < count) {
                     dummy.position.set(x, h + 0.5, z);
                     dummy.scale.set(1, 0.8 + Math.random() * 0.5, 1);
@@ -116,7 +101,7 @@ export function createVegetation(scene, seeds) {
                     dummy.updateMatrix();
                     broadleafMesh.setMatrixAt(iBroad, dummy.matrix);
 
-                    // Variação de cor da folha
+                    // Cor da folha
                     const leafColor = new THREE.Color(0x228B22).offsetHSL(0, 0, Math.random() * 0.2 - 0.1);
                     if(m > 0.5) leafColor.setHex(0x004400); 
                     broadleafMesh.setColorAt(iBroad, leafColor);
@@ -127,7 +112,7 @@ export function createVegetation(scene, seeds) {
         }
     }
 
-    // Atualiza as matrizes para renderizar
+    // Atualiza as matrizes
     trunkMesh.instanceMatrix.needsUpdate = true;
     broadleafMesh.instanceMatrix.needsUpdate = true;
     broadleafMesh.instanceColor.needsUpdate = true;
