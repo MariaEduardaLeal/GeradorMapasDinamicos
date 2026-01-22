@@ -33,23 +33,25 @@ export function getCityLocations() { return cityLocations; }
 export function getChimneys() { return chimneys; }
 
 export function updateCityLights(sunHeightNorm) {
-    // Começa a acender quando o sol baixa (entardecer)
     let intensity = 0;
     if (sunHeightNorm < 0.1) {
-        // Quanto mais baixo o sol, mais forte a luz (até o máximo de 1.0)
         intensity = THREE.MathUtils.clamp(1.0 - (sunHeightNorm + 0.5) * 1.5, 0, 1);
     }
 
-    // --- TURBINANDO AS LUZES ---
-    windowMat.emissiveIntensity = intensity * 10.0; // Brilho muito forte na janela
-    torchMat.emissiveIntensity = intensity * 15.0;  // Tocha radiante
+    // Brilho visual dos materiais
+    windowMat.emissiveIntensity = intensity * 10.0; 
+    torchMat.emissiveIntensity = intensity * 15.0;  
 
-    // Tremeluzir do fogo
     const flicker = Math.random() * 0.5; 
     
+    // --- ATUALIZAÇÃO INTELIGENTE DAS LUZES ---
     cityLights.forEach(light => {
-        // Luz física ilumina muito mais longe (distance=30) e mais forte (intensity=3)
-        light.intensity = (intensity * 3.0) + (intensity > 0 ? flicker : 0);
+        // Lemos a potência máxima que salvamos dentro da luz (userData)
+        // Se não tiver nada salvo, usa 10 como padrão
+        const maxPower = light.userData.maxIntensity || 10;
+        
+        // Aplica a intensidade baseada no horário (0 a 1) * Potência Máxima
+        light.intensity = (intensity * maxPower) + (intensity > 0 ? flicker : 0);
         light.visible = intensity > 0.01; 
     });
 }
@@ -60,9 +62,12 @@ function isValidLocation(x, z, seeds) {
     return null;
 }
 
-// MODELOS
+// --- MODELOS ---
+
 function createHouseModel(userData) {
     const group = new THREE.Group();
+    
+    // Base, Telhado, Porta...
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0xF5F5DC, flatShading: true }));
     base.position.y = 0.35; base.castShadow = true; base.receiveShadow = true; base.userData = userData;
     group.add(base);
@@ -82,11 +87,23 @@ function createHouseModel(userData) {
     chimney.position.set(0.2, 0.9, 0.2); group.add(chimney);
     group.userData.chimneyPos = new THREE.Vector3(0.2, 1.2, 0.2); 
 
+    // --- NOVA LUZ DA VILA ---
+    // Uma luz laranja amarelada, alcance curto (10 metros)
+    const houseLight = new THREE.PointLight(0xFFAA00, 0, 10); 
+    houseLight.position.set(0, 1.5, 0);
+    
+    // AQUI VOCÊ CONTROLA A FORÇA DA VILA (Coloquei 10, mas pode por 20, 30...)
+    houseLight.userData = { maxIntensity: 10.0 }; 
+    
+    group.add(houseLight);
+    cityLights.push(houseLight); // Adiciona na lista para acender de noite
+
     return group;
 }
 
 function createCastleModel(userData) {
     const group = new THREE.Group();
+    // Paredes, Telhados...
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x708090, flatShading: true }); 
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x191970, flatShading: true }); 
 
@@ -107,15 +124,17 @@ function createCastleModel(userData) {
         t.position.set(pos[0], 0.75, pos[1]); t.castShadow = true; t.userData = userData; group.add(t);
         const r = new THREE.Mesh(subRoofGeo, roofMat);
         r.position.set(pos[0], 1.8, pos[1]); group.add(r);
-
         const torch = new THREE.Mesh(torchGeo, torchMat);
-        torch.position.set(pos[0], 2.2, pos[1]);
-        group.add(torch);
+        torch.position.set(pos[0], 2.2, pos[1]); group.add(torch);
     });
 
-    // Luz maior
+    // --- LUZ DO CASTELO ---
     const castleLight = new THREE.PointLight(0xFF6600, 0, 30); 
     castleLight.position.set(0, 2.5, 0);
+    
+    // AQUI MANTENHO A SUA FORÇA EXPLOSIVA DE 85
+    castleLight.userData = { maxIntensity: 85.0 }; 
+    
     group.add(castleLight);
     cityLights.push(castleLight);
 

@@ -186,7 +186,7 @@ function animate() {
 
     // Se não estiver mexendo no slider, o tempo avança sozinho
     if (!isDraggingSlider) {
-        manualTime += delta * 100; // Velocidade do tempo (60x)
+        manualTime += delta * 10; // Velocidade do tempo (60x)
         if (manualTime >= 2400) manualTime = 0; // Reseta dia
         timeSlider.value = manualTime; // Atualiza visual do slider
     }
